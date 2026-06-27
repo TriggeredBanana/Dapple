@@ -30,3 +30,8 @@ python-dotenv>=1.0.0
 
 # Image processing (used internally by diffusers)
 Pillow>=11.0.0
+
+# Web server (Dapple web interface)
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.0.0
