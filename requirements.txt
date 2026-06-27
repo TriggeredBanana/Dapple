@@ -1,0 +1,32 @@
+# Dapple — Python Requirements
+# Install with: pip install -r requirements.txt
+#
+# IMPORTANT: Install PyTorch with CUDA FIRST from https://pytorch.org/get-started/locally/
+# Then install these packages.
+
+# Core — HuggingFace Diffusers (image generation pipelines)
+diffusers>=0.32.0
+
+# Core — HuggingFace Transformers (text encoders: T5, CLIP, Qwen, etc.)
+transformers>=4.46.0
+
+# Core — HuggingFace Accelerate (device placement, CPU offload)
+accelerate>=1.2.0
+
+# Core — PyTorch (install with CUDA from pytorch.org, NOT via pip unless you know what you're doing)
+# torch — see https://pytorch.org/get-started/locally/
+
+# Quantization — BitsAndBytes 4-bit NF4 (reduces VRAM ~3x)
+bitsandbytes>=0.45.0
+
+# Required by diffusers internally
+regex
+
+# Tokenizer support for FLUX text encoders
+sentencepiece>=0.2.0
+
+# Environment variable loading (for HF_TOKEN in .env file)
+python-dotenv>=1.0.0
+
+# Image processing (used internally by diffusers)
+Pillow>=11.0.0

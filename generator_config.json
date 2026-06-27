@@ -1,0 +1,18 @@
+{
+    "//": "Dapple — see Setup.md for documentation on each field.",
+
+    "model": "",
+    "default_prompt": "",
+    "default_negative_prompt": "",
+    "cache_dir": "D:/AI_Models",
+
+    "steps": 0,
+    "guidance": 0.0,
+    "width": 0,
+    "height": 0,
+    "seed": -1,
+
+    "use_nf4": true,
+    "use_cpu_offload": "auto"
+}
+
