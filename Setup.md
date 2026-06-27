@@ -110,6 +110,8 @@ Create a `.env` file next to the script for the HuggingFace token (required for 
 HF_TOKEN=hf_your_token_here
 ```
 
+**Important:** Before the token will work, you must visit each model's page on huggingface.co and click **"Accept License"** — a token alone returns a 401/403 error on gated models.
+
 ### Requirements
 
 ```
