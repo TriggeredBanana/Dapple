@@ -38,38 +38,6 @@ import uvicorn
 CONFIG_PATH = Path(__file__).parent / "generator_config.json"
 
 MODELS = {
-    "schnell": {
-        "name": "FLUX.1 Schnell",
-        "repo_id": "black-forest-labs/FLUX.1-schnell",
-        "pipeline_module": "FluxPipeline",
-        "license": "Apache 2.0 — free for commercial use",
-        "requires_token": False,
-        "default_steps": 4,
-        "default_guidance": 0.0,
-        "default_width": 1024,
-        "default_height": 1024,
-        "max_sequence_length": 256,
-        "supports_negative": False,
-        "needs_cpu_offload": "auto",
-        "nf4_recommended": True,
-        "description": "12B · Moderate · Apache 2.0 · no token needed",
-    },
-    "dev": {
-        "name": "FLUX.1 Dev",
-        "repo_id": "black-forest-labs/FLUX.1-dev",
-        "pipeline_module": "FluxPipeline",
-        "license": "Non-commercial only — requires HF token",
-        "requires_token": True,
-        "default_steps": 20,
-        "default_guidance": 3.5,
-        "default_width": 1024,
-        "default_height": 1024,
-        "max_sequence_length": 512,
-        "supports_negative": True,
-        "needs_cpu_offload": "always",
-        "nf4_recommended": True,
-        "description": "12B · Slow · non-commercial · needs HF token",
-    },
     "klein-4b": {
         "name": "FLUX.2 Klein 4B",
         "repo_id": "black-forest-labs/FLUX.2-klein-4B",
@@ -101,6 +69,38 @@ MODELS = {
         "needs_cpu_offload": "always",
         "nf4_recommended": True,
         "description": "9B · Fast · non-commercial · needs HF token",
+    },
+    "schnell": {
+        "name": "FLUX.1 Schnell",
+        "repo_id": "black-forest-labs/FLUX.1-schnell",
+        "pipeline_module": "FluxPipeline",
+        "license": "Apache 2.0 — free for commercial use",
+        "requires_token": False,
+        "default_steps": 4,
+        "default_guidance": 0.0,
+        "default_width": 1024,
+        "default_height": 1024,
+        "max_sequence_length": 256,
+        "supports_negative": False,
+        "needs_cpu_offload": "auto",
+        "nf4_recommended": True,
+        "description": "12B · Moderate · Apache 2.0 · no token needed",
+    },
+    "dev": {
+        "name": "FLUX.1 Dev",
+        "repo_id": "black-forest-labs/FLUX.1-dev",
+        "pipeline_module": "FluxPipeline",
+        "license": "Non-commercial only — requires HF token",
+        "requires_token": True,
+        "default_steps": 20,
+        "default_guidance": 3.5,
+        "default_width": 1024,
+        "default_height": 1024,
+        "max_sequence_length": 512,
+        "supports_negative": True,
+        "needs_cpu_offload": "always",
+        "nf4_recommended": True,
+        "description": "12B · Slow · non-commercial · needs HF token",
     },
     "flux2-dev": {
         "name": "FLUX.2 Dev 32B",
@@ -135,7 +135,11 @@ def _load_config() -> dict:
 
 
 def _save_config(data: dict) -> None:
-    existing = _load_config() if CONFIG_PATH.exists() else {}
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH, "r", encoding="utf-8") as fh:
+            existing = json.load(fh)
+    else:
+        existing = {}
     existing.update(data)
     with open(CONFIG_PATH, "w", encoding="utf-8") as fh:
         json.dump(existing, fh, indent=4, ensure_ascii=False)
@@ -166,6 +170,7 @@ def _resolve_cache_dir() -> str:
 _pipeline = None
 _active_model_key: str = ""
 _cache_dir: str = ""
+_gen_progress = {"step": 0, "total": 0, "active": False}
 
 
 def _get_torch_dtype():
@@ -278,30 +283,43 @@ def _sanitize_filename(text: str) -> str:
     return text.strip("_ ")[:120]
 
 
-def generate_image(prompt: str, negative_prompt: str = "", seed_val: int = -1) -> dict:
+def generate_image(prompt: str, negative_prompt: str = "", seed_val: int = -1,
+                   width_override: int = 0, height_override: int = 0,
+                   steps_override: int = 0, guidance_override: float = 0.0) -> dict:
+    global _gen_progress
+
     if _pipeline is None:
         raise HTTPException(status_code=400, detail="No model loaded. Load a model first.")
 
     model_cfg = MODELS[_active_model_key]
     user_cfg = _load_config()
 
-    steps = user_cfg.get("steps", 0) or model_cfg["default_steps"]
-    width = user_cfg.get("width", 0) or model_cfg["default_width"]
-    height = user_cfg.get("height", 0) or model_cfg["default_height"]
-    guidance = user_cfg.get("guidance", 0.0) or model_cfg["default_guidance"]
+    steps = steps_override or user_cfg.get("steps", 0) or model_cfg["default_steps"]
+    width = width_override or user_cfg.get("width", 0) or model_cfg["default_width"]
+    height = height_override or user_cfg.get("height", 0) or model_cfg["default_height"]
+    guidance = guidance_override or user_cfg.get("guidance", 0.0) or model_cfg["default_guidance"]
 
     import torch
     if seed_val == -1:
         seed_val = int(torch.randint(0, 2 ** 32, (1,)).item())
 
+    def _on_step(*args):
+        _gen_progress["step"] = args[1] + 1
+        return args[3] if len(args) > 3 else {}
+
+    _gen_progress["step"] = 0
+    _gen_progress["total"] = steps
+    _gen_progress["active"] = True
+
     generator = torch.Generator(device="cpu").manual_seed(seed_val)
-    gen_kwargs = {
+    gen_kwargs: dict = {
         "prompt": prompt,
         "num_inference_steps": steps,
         "guidance_scale": guidance,
         "width": width,
         "height": height,
         "generator": generator,
+        "callback_on_step_end": _on_step,
     }
 
     if model_cfg["pipeline_module"] == "FluxPipeline":
@@ -320,6 +338,8 @@ def generate_image(prompt: str, negative_prompt: str = "", seed_val: int = -1) -
     result = _pipeline(**gen_kwargs)
     gen_time = time.time() - gen_start
 
+    _gen_progress["active"] = False
+
     image = result.images[0]
     safe_prompt = _sanitize_filename(prompt[:60])
     timestamp = datetime.now().strftime("%H%M%S")
@@ -337,12 +357,9 @@ def generate_image(prompt: str, negative_prompt: str = "", seed_val: int = -1) -
     }
 
 
-async def event_generator():
-    steps = 28
-    for i in range(steps + 1):
-        yield f"data: {json.dumps({'step': i, 'total': steps})}\n\n"
-        await asyncio.sleep(0.05)
-    yield "data: {\"done\": true}\n\n"
+def _run_generation(prompt: str, negative_prompt: str, seed_val: int,
+                    width: int, height: int, steps: int, guidance: float) -> dict:
+    return generate_image(prompt, negative_prompt, seed_val, width, height, steps, guidance)
 
 
 # ---------------------------------------------------------------------------
@@ -372,10 +389,18 @@ class ModelSelect(BaseModel):
 class GenerateRequest(BaseModel):
     prompt: str
     negative_prompt: str = ""
+    seed: int = -1
+    width: int = 0
+    height: int = 0
+    steps: int = 0
+    guidance: float = 0.0
 
 class ConfigUpdate(BaseModel):
     key: str
     value: str
+
+class OpenFolderRequest(BaseModel):
+    filename: str
 
 # ---------------------------------------------------------------------------
 #  API Routes
@@ -446,13 +471,17 @@ async def api_load_model(req: ModelSelect):
 async def api_generate(req: GenerateRequest):
     if not req.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty")
+    loop = asyncio.get_running_loop()
     try:
-        result = generate_image(req.prompt, req.negative_prompt)
+        result = await loop.run_in_executor(None, _run_generation,
+            req.prompt, req.negative_prompt, req.seed,
+            req.width, req.height, req.steps, req.guidance)
         return result
     except HTTPException:
         raise
     except Exception as exc:
         traceback.print_exc()
+        _gen_progress["active"] = False
         raise HTTPException(status_code=500, detail=str(exc))
 
 
@@ -475,7 +504,7 @@ async def api_set_config(req: ConfigUpdate):
 
 @app.get("/api/progress")
 async def api_progress():
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return _gen_progress
 
 
 @app.get("/api/image/{filename}")
@@ -488,14 +517,13 @@ async def api_image(filename: str):
 
 
 @app.post("/api/open-folder")
-async def api_open_folder(payload: dict):
-    filename = (payload or {}).get("filename", "")
-    if not filename:
+async def api_open_folder(req: OpenFolderRequest):
+    if not req.filename:
         raise HTTPException(status_code=400, detail="filename required")
     import subprocess
     import platform
     for d in Path().glob("Generated_Images_*"):
-        candidate = d / filename
+        candidate = d / req.filename
         if candidate.exists():
             folder = str(d.resolve())
             try:

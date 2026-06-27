@@ -12,9 +12,9 @@
     config: {},
     gpu: null,
     lastResult: null,
+    hasImage: false,
+    progressTimer: null,
   };
-
-  // ---- DOM refs ----
 
   const el = {
     sidebar:        $('#sidebar'),
@@ -30,6 +30,9 @@
     resultLabel:    $('#result-label'),
     resultMeta:     $('#result-meta'),
     genLoading:     $('#gen-loading'),
+    progressWrapper: $('#progress-wrapper'),
+    progressFill:   $('#progress-fill'),
+    progressText:   $('#progress-text'),
     promptForm:     $('#prompt-form'),
     promptInput:    $('#prompt-input'),
     negativePrompt: $('#negative-prompt'),
@@ -41,8 +44,16 @@
     paramSteps:     $('#param-steps'),
     paramGuidance:  $('#param-guidance'),
     paramSeed:      $('#param-seed'),
+    paramWidth:     $('#param-width'),
+    paramHeight:    $('#param-height'),
     toastContainer: $('#toast-container'),
     btnFolder:      $('#btn-folder'),
+    btnClear:       $('#btn-clear'),
+    cacheInput:     $('#cache-input'),
+    btnSetupSave:   $('#btn-setup-save'),
+    nf4Toggle:      $('#nf4-toggle'),
+    nf4Info:        $('#nf4-info'),
+    btnNf4Info:     $('#btn-nf4-info'),
   };
 
   // ---- Sidebar resize ----
@@ -55,7 +66,6 @@
     const handle = document.createElement('div');
     handle.className = 'sidebar-resize-handle';
     el.sidebar.appendChild(handle);
-
     handle.addEventListener('mousedown', (e) => {
       e.preventDefault();
       resizeDragging = true;
@@ -64,7 +74,6 @@
       document.body.style.cursor = 'col-resize';
       handle.classList.add('dragging');
     });
-
     document.addEventListener('mousemove', (e) => {
       if (!resizeDragging) return;
       const delta = e.clientX - resizeStartX;
@@ -72,7 +81,6 @@
       el.sidebar.style.width = newW + 'px';
       el.sidebar.style.minWidth = newW + 'px';
     });
-
     document.addEventListener('mouseup', () => {
       if (!resizeDragging) return;
       resizeDragging = false;
@@ -113,6 +121,13 @@
     return res.json();
   }
 
+  async function apiSaveConfig(key, value) {
+    return api('/api/config', {
+      method: 'POST',
+      body: JSON.stringify({ key, value: JSON.stringify(value) }),
+    });
+  }
+
   // ---- Data fetching ----
 
   async function fetchStatus() {
@@ -121,8 +136,11 @@
       state.config = data.config || {};
       state.gpu = data.gpu;
       el.statusGpu.textContent = data.gpu ? data.gpu.name : 'Not detected';
+      el.statusGpu.title = data.gpu ? data.gpu.name : '';
       el.statusVram.textContent = data.gpu ? `${data.gpu.vram_gb} GB` : '--';
       el.statusCache.textContent = data.cache_dir || '--';
+      if (data.cache_dir) el.cacheInput.value = data.cache_dir;
+
       if (data.active_model) {
         state.activeModel = data.active_model.key;
         el.statusModel.textContent = data.active_model.name;
@@ -130,6 +148,11 @@
       } else {
         el.statusModel.textContent = 'None loaded';
       }
+
+      if (state.config.use_nf4 !== undefined) {
+        el.nf4Toggle.checked = state.config.use_nf4;
+      }
+
       updateConfigBadges();
       updateSendButton();
     } catch (err) {
@@ -153,10 +176,7 @@
 
   function parseModelMeta(desc) {
     const parts = desc.split('·').map(s => s.trim());
-    return {
-      params: parts[0] || '',
-      speed: parts[1] || '',
-    };
+    return { params: parts[0] || '', speed: parts[1] || '' };
   }
 
   // ---- Model rendering ----
@@ -170,7 +190,7 @@
         <div class="model-item ${isActive ? 'active' : ''} ${isOtherLoading ? 'loading-state' : ''}" data-model="${m.key}">
           <div class="model-item-row">
             <span class="model-item-name">${esc(m.name)}</span>
-            <span class="model-item-status" data-model-status="${m.key}">
+            <span class="model-item-status">
               <span class="model-spinner u-hidden"></span>
               <span class="model-check u-hidden">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -213,13 +233,12 @@
     setUIEnabled(false);
 
     try {
-      await api('/api/load-model', {
-        method: 'POST',
-        body: JSON.stringify({ model_key: key }),
-      });
-
+      await api('/api/load-model', { method: 'POST', body: JSON.stringify({ model_key: key }) });
       state.activeModel = key;
+      state.hasImage = false;
       el.statusModel.textContent = model.name;
+      el.outputResult.classList.add('u-hidden');
+      el.outputPlaceholder.classList.remove('u-hidden');
       highlightActiveModel();
       updateConfigBadges();
       populateParams(model);
@@ -264,9 +283,7 @@
       const check = item.querySelector('.model-check');
       if (spinner) spinner.classList.add('u-hidden');
       if (check) check.classList.add('u-hidden');
-      if (itemKey === key && check) {
-        check.classList.remove('u-hidden');
-      }
+      if (itemKey === key && check) check.classList.remove('u-hidden');
     });
     highlightActiveModel();
   }
@@ -289,6 +306,8 @@
     if (model) {
       el.paramSteps.value = model.default_steps;
       el.paramGuidance.value = model.default_guidance;
+      el.paramWidth.value = model.default_width;
+      el.paramHeight.value = model.default_height;
       el.sizeBadge.textContent = `${model.default_width}x${model.default_height}`;
     }
   }
@@ -320,6 +339,12 @@
 
     const negativePrompt = el.negativePrompt.value.trim();
     const seedVal = parseInt(el.paramSeed.value) || -1;
+    const widthVal = parseInt(el.paramWidth.value) || 1024;
+    const heightVal = parseInt(el.paramHeight.value) || 1024;
+    const stepsVal = parseInt(el.paramSteps.value) || 4;
+    const guidanceVal = parseFloat(el.paramGuidance.value) || 0;
+
+    startProgressPolling(stepsVal);
 
     try {
       const result = await api('/api/generate', {
@@ -328,16 +353,21 @@
           prompt,
           negative_prompt: negativePrompt,
           seed: seedVal,
+          width: widthVal,
+          height: heightVal,
+          steps: stepsVal,
+          guidance: guidanceVal,
         }),
       });
-
       state.lastResult = result;
+      state.hasImage = true;
       displayResult(result);
       showToast(`Generated in ${result.time}s`, 'success');
     } catch (err) {
       showToast(err.message || 'Generation failed', 'error');
       console.error('Generation failed:', err);
     } finally {
+      stopProgressPolling();
       state.generating = false;
       setGeneratingUI(false);
     }
@@ -348,14 +378,47 @@
       el.btnSend.classList.add('generating');
       el.btnSend.disabled = true;
       el.promptInput.disabled = true;
+
+      if (!state.hasImage) {
+        el.outputPlaceholder.classList.add('u-hidden');
+      }
+
       el.genLoading.classList.remove('u-hidden');
-      el.resultImage.style.opacity = '0.3';
+      if (state.hasImage) {
+        el.resultImage.style.opacity = '0.08';
+      }
+      el.progressWrapper.classList.remove('u-hidden');
     } else {
       el.btnSend.classList.remove('generating');
       el.promptInput.disabled = false;
       el.genLoading.classList.add('u-hidden');
-      el.resultImage.style.opacity = '1';
+      if (state.hasImage) {
+        el.resultImage.style.opacity = '1';
+      }
+      el.progressWrapper.classList.add('u-hidden');
+      el.progressFill.style.width = '0%';
       updateSendButton();
+    }
+  }
+
+  function startProgressPolling(totalSteps) {
+    stopProgressPolling();
+    state.progressTimer = setInterval(async () => {
+      try {
+        const p = await api('/api/progress');
+        if (p.active && p.total > 0) {
+          const pct = Math.round((p.step / p.total) * 100);
+          el.progressFill.style.width = pct + '%';
+          el.progressText.textContent = `Step ${p.step} / ${p.total}`;
+        }
+      } catch (_) {}
+    }, 150);
+  }
+
+  function stopProgressPolling() {
+    if (state.progressTimer) {
+      clearInterval(state.progressTimer);
+      state.progressTimer = null;
     }
   }
 
@@ -368,12 +431,10 @@
       `<span>${result.width}x${result.height}</span>` +
       `<span>${result.time}s</span>` +
       `<span>seed ${result.seed}</span>`;
-
     el.outputPlaceholder.classList.add('u-hidden');
     el.outputResult.classList.remove('u-hidden');
+    el.sizeBadge.textContent = `${result.width}x${result.height}`;
   }
-
-  // ---- Open folder ----
 
   async function openFolder() {
     if (!state.lastResult) return;
@@ -413,6 +474,13 @@
   function setupEventListeners() {
     el.promptForm.addEventListener('submit', handleGenerate);
     el.btnFolder.addEventListener('click', openFolder);
+    el.btnClear.addEventListener('click', () => {
+      state.hasImage = false;
+      state.lastResult = null;
+      el.resultImage.src = '';
+      el.outputResult.classList.add('u-hidden');
+      el.outputPlaceholder.classList.remove('u-hidden');
+    });
 
     el.btnToggleAdvanced.addEventListener('click', () => {
       const hidden = el.promptAdvanced.classList.contains('u-hidden');
@@ -427,11 +495,48 @@
       if (el.paramSeed.value === '') el.paramSeed.value = '-1';
     });
 
+    el.paramWidth.addEventListener('change', () => {
+      const w = el.paramWidth.value;
+      const h = el.paramHeight.value;
+      el.sizeBadge.textContent = `${w}x${h}`;
+    });
+    el.paramHeight.addEventListener('change', () => {
+      const w = el.paramWidth.value;
+      const h = el.paramHeight.value;
+      el.sizeBadge.textContent = `${w}x${h}`;
+    });
+
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         el.promptAdvanced.classList.add('u-hidden');
         el.btnToggleAdvanced.querySelector('span').textContent = 'Advanced';
       }
+    });
+
+    el.btnSetupSave.addEventListener('click', async () => {
+      const dir = el.cacheInput.value.trim();
+      if (!dir) return;
+      try {
+        await apiSaveConfig('cache_dir', dir);
+        showToast('Cache directory saved. Restart server to apply.', 'success');
+      } catch (err) {
+        showToast('Failed to save cache directory', 'error');
+      }
+    });
+
+    el.nf4Toggle.addEventListener('change', async () => {
+      const val = el.nf4Toggle.checked;
+      try {
+        await apiSaveConfig('use_nf4', val);
+        showToast(val ? 'NF4 enabled' : 'NF4 disabled', 'info');
+      } catch (err) {
+        showToast('Failed to save NF4 setting', 'error');
+        el.nf4Toggle.checked = !val;
+      }
+    });
+
+    el.btnNf4Info.addEventListener('click', () => {
+      el.nf4Info.classList.toggle('u-hidden');
     });
   }
 
@@ -453,8 +558,6 @@
       toast.addEventListener('animationend', () => toast.remove());
     }, 3500);
   }
-
-  // ---- Utilities ----
 
   function esc(str) {
     const div = document.createElement('div');

@@ -34,11 +34,36 @@
   </div>
 
   <div class="sidebar-section">
+    <div class="section-label">Cache Directory</div>
+    <div class="setup-row">
+      <input type="text" class="field-input setup-input" id="cache-input" placeholder="D:/AI_Models" spellcheck="false">
+      <button class="btn-setup" id="btn-setup-save" title="Save cache directory">Save</button>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="section-label">Memory</div>
+    <div class="toggle-row" id="nf4-row">
+      <span class="toggle-label">NF4 Quantization</span>
+      <div class="toggle-wrapper">
+        <label class="toggle-switch">
+          <input type="checkbox" id="nf4-toggle" checked>
+          <span class="toggle-track"></span>
+        </label>
+        <button class="btn-info" id="btn-nf4-info" aria-label="NF4 info" title="What is NF4?">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        </button>
+      </div>
+    </div>
+    <p class="nf4-info u-hidden" id="nf4-info">Reduces VRAM usage by ~3-4x using 4-bit quantization. Slight quality trade-off. Recommended unless you have 24+ GB VRAM.</p>
+  </div>
+
+  <div class="sidebar-section">
     <div class="section-label">Status</div>
     <div class="status-card" id="status-card">
       <div class="status-row">
         <span class="status-label">GPU</span>
-        <span class="status-value" id="status-gpu">--</span>
+        <span class="status-value" id="status-gpu" title="">--</span>
       </div>
       <div class="status-row">
         <span class="status-label">VRAM</span>
@@ -75,17 +100,32 @@
       <div class="output-result u-hidden" id="output-result">
         <div class="result-header">
           <span class="result-label" id="result-label"></span>
-          <button class="btn-icon" id="btn-folder" title="Open folder" aria-label="Open folder">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            </svg>
-          </button>
+          <div class="result-header-actions">
+            <button class="btn-icon" id="btn-folder" title="Open folder" aria-label="Open folder">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+            </button>
+            <button class="btn-icon btn-clear" id="btn-clear" title="Clear image" aria-label="Clear image">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="result-image-wrapper">
           <img class="result-image" id="result-image" alt="Generated">
         </div>
         <div class="result-meta" id="result-meta"></div>
       </div>
+    </div>
+
+    <div class="progress-bar-wrapper u-hidden" id="progress-wrapper">
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <span class="progress-text" id="progress-text">Step 0 / 0</span>
     </div>
 
     <form class="prompt-form" id="prompt-form" autocomplete="off">
@@ -133,6 +173,14 @@
           <div class="control-group">
             <label class="field-label" for="param-seed">Seed</label>
             <input type="number" class="field-input field-narrow" id="param-seed" value="-1" min="-1" placeholder="Random">
+          </div>
+          <div class="control-group">
+            <label class="field-label" for="param-width">Width</label>
+            <input type="number" class="field-input field-narrow" id="param-width" value="1024" min="256" max="2048" step="64">
+          </div>
+          <div class="control-group">
+            <label class="field-label" for="param-height">Height</label>
+            <input type="number" class="field-input field-narrow" id="param-height" value="1024" min="256" max="2048" step="64">
           </div>
         </div>
       </div>

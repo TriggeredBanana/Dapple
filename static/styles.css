@@ -394,6 +394,22 @@ a {
   border-bottom: 1px solid var(--border-subtle);
 }
 
+.result-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn-clear {
+  color: var(--error);
+}
+
+.btn-clear:hover {
+  background: var(--error-subtle);
+  color: var(--error);
+}
+
 .result-label {
   font-size: 12px;
   font-weight: 500;
@@ -919,6 +935,209 @@ a {
 ::selection {
   background: var(--accent-subtle);
   color: var(--text-primary);
+}
+
+/* --------------------------------------------------------------------------
+   Status GPU text wrapping
+   -------------------------------------------------------------------------- */
+
+.status-value {
+  white-space: normal;
+  word-break: break-word;
+  max-width: 160px;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* --------------------------------------------------------------------------
+   Setup Row
+   -------------------------------------------------------------------------- */
+
+.setup-row {
+  display: flex;
+  gap: 6px;
+}
+
+.setup-input {
+  flex: 1;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.btn-setup {
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-3);
+  border: 1px solid var(--border-visible);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition-property: background-color, color, border-color;
+  transition-duration: var(--transition-fast);
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  min-height: 32px;
+}
+
+.btn-setup:hover {
+  background: var(--accent-subtle);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.btn-setup:active {
+  transform: scale(0.96);
+}
+
+/* --------------------------------------------------------------------------
+   Toggle Switch
+   -------------------------------------------------------------------------- */
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.toggle-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.toggle-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.toggle-track {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-surface-4);
+  border-radius: 10px;
+  transition-property: background-color;
+  transition-duration: var(--transition-fast);
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+.toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: var(--text-primary);
+  border-radius: 50%;
+  transition-property: transform;
+  transition-duration: var(--transition-fast);
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+.toggle-switch input:checked + .toggle-track {
+  background: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-track::after {
+  transform: translateX(16px);
+}
+
+.btn-info {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition-property: color, background-color;
+  transition-duration: var(--transition-fast);
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  position: relative;
+}
+
+.btn-info::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+.btn-info:hover {
+  color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.nf4-info {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--bg-surface-2);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  text-wrap: pretty;
+}
+
+/* --------------------------------------------------------------------------
+   Progress Bar
+   -------------------------------------------------------------------------- */
+
+.progress-bar-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progress-track {
+  flex: 1;
+  height: 4px;
+  background: var(--bg-surface-2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition-property: width;
+  transition-duration: 100ms;
+  transition-timing-function: linear;
+}
+
+.progress-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  min-width: 80px;
+  text-align: right;
 }
 
 /* --------------------------------------------------------------------------
