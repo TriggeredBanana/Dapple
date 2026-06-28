@@ -137,7 +137,12 @@
       state.gpu = data.gpu;
       el.statusGpu.textContent = data.gpu ? data.gpu.name : 'Not detected';
       el.statusGpu.title = data.gpu ? data.gpu.name : '';
-      el.statusVram.textContent = data.gpu ? `${data.gpu.vram_gb} GB` : '--';
+      if (data.gpu) {
+        el.statusVram.textContent = `${data.gpu.used_vram_gb} / ${data.gpu.vram_gb} GB`;
+        el.statusVram.title = `${data.gpu.free_vram_gb} GB free`;
+      } else {
+        el.statusVram.textContent = '--';
+      }
       el.statusCache.textContent = data.cache_dir || '--';
       if (data.cache_dir) el.cacheInput.value = data.cache_dir;
 

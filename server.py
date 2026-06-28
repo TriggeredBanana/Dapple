@@ -84,7 +84,7 @@ MODELS = {
         "supports_negative": False,
         "needs_cpu_offload": "auto",
         "nf4_recommended": True,
-        "description": "12B · Moderate · Apache 2.0 · no token needed",
+        "description": "12B · Fast · Apache 2.0 · no token needed",
     },
     "dev": {
         "name": "FLUX.1 Dev",
@@ -183,6 +183,12 @@ def _setup_hardware():
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
     torch.set_float32_matmul_precision("high")
+    if hasattr(torch.backends.cuda, "enable_flash_sdp"):
+        torch.backends.cuda.enable_flash_sdp(True)
+    if hasattr(torch.backends.cuda, "enable_mem_efficient_sdp"):
+        torch.backends.cuda.enable_mem_efficient_sdp(True)
+    if hasattr(torch.backends.cuda, "enable_math_sdp"):
+        torch.backends.cuda.enable_math_sdp(True)
 
 
 def load_model(model_key: str) -> dict:
@@ -248,15 +254,31 @@ def load_model(model_key: str) -> dict:
     else:
         offload_mode = cfg["needs_cpu_offload"]
 
+    offload_applied = None
     if offload_mode == "always":
         pipe.enable_model_cpu_offload()
+        offload_applied = "cpu_offload"
     elif offload_mode == "never":
         pipe = pipe.to("cuda")
+        offload_applied = "full_gpu"
     else:
         try:
             pipe = pipe.to("cuda")
+            offload_applied = "full_gpu"
         except Exception:
             pipe.enable_model_cpu_offload()
+            offload_applied = "cpu_offload"
+
+    if offload_applied == "full_gpu":
+        import torch
+        free_bytes, _total = torch.cuda.mem_get_info(0)
+        free_gb = free_bytes / 1024**3
+        if free_gb < 4.0:
+            print(f"  ⚠️  Only {free_gb:.1f} GB free VRAM — switching to CPU offload to avoid memory swap")
+            pipe.enable_model_cpu_offload()
+            offload_applied = "cpu_offload"
+
+    print(f"  🖥️  Offload mode: {offload_applied}")
 
     try:
         pipe.vae.enable_tiling()
@@ -266,6 +288,8 @@ def load_model(model_key: str) -> dict:
         pipe.set_progress_bar_config(disable=True)
     except Exception:
         pass
+
+    _device_diag(pipe, cfg["name"])
 
     _pipeline = pipe
     _active_model_key = model_key
@@ -283,6 +307,28 @@ def _unload_pipeline():
             torch.cuda.empty_cache()
     _pipeline = None
     _active_model_key = ""
+
+
+def _device_diag(pipe, model_name: str) -> None:
+    import torch
+    if not torch.cuda.is_available():
+        return
+    free_bytes, total_bytes = torch.cuda.mem_get_info(0)
+    used_gb = (total_bytes - free_bytes) / 1024**3
+
+    components = []
+    for attr_name in ("transformer", "vae", "text_encoder", "text_encoder_2"):
+        comp = getattr(pipe, attr_name, None)
+        if comp is not None:
+            try:
+                p = next(comp.parameters())
+                device = str(p.device)
+                components.append(f"{attr_name}={device}")
+            except StopIteration:
+                components.append(f"{attr_name}=no_params")
+
+    print(f"  📍 Device map: {' | '.join(components)}")
+    print(f"  💾 VRAM after load: {used_gb:.1f} GB used / {total_bytes/1024**3:.1f} GB total")
 
 
 def _sanitize_filename(text: str) -> str:
@@ -338,6 +384,27 @@ def generate_image(prompt: str, negative_prompt: str = "", seed_val: int = -1,
             gen_kwargs["negative_prompt_2"] = negative_prompt
     elif model_cfg["pipeline_module"] in ("Flux2KleinPipeline", "Flux2Pipeline"):
         gen_kwargs["max_sequence_length"] = model_cfg["max_sequence_length"]
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    if torch.cuda.is_available():
+        free_bytes, total_bytes = torch.cuda.mem_get_info(0)
+        free_gb = free_bytes / 1024**3
+
+        param_count_map = {"schnell": 12, "dev": 12, "klein-4b": 4, "klein-9b": 9, "flux2-dev": 32}
+        param_b = param_count_map.get(_active_model_key, 12)
+        use_nf4 = user_cfg.get("use_nf4", True)
+        bytes_per_param = 0.6 if use_nf4 else 2.0
+        est_model_gb = param_b * bytes_per_param
+        est_workspace_gb = 4.0
+        est_total_gb = est_model_gb + est_workspace_gb
+
+        if free_gb < est_total_gb:
+            print(f"  ⚠️  Low VRAM: {free_gb:.1f} GB free, need ~{est_total_gb:.1f} GB. "
+                  f"Generation may swap to system RAM and be very slow.")
+        else:
+            print(f"  💾 VRAM: {free_gb:.1f} GB free (need ~{est_total_gb:.1f} GB)")
 
     today_str = datetime.now().strftime("%Y-%m-%d")
     output_dir = Path(f"Generated_Images_{today_str}")
@@ -421,9 +488,12 @@ async def api_status():
     gpu_info = None
     if torch.cuda.is_available():
         props = torch.cuda.get_device_properties(0)
+        free_bytes, total_bytes = torch.cuda.mem_get_info(0)
         gpu_info = {
             "name": torch.cuda.get_device_name(0),
             "vram_gb": round(props.total_memory / 1024**3, 1),
+            "free_vram_gb": round(free_bytes / 1024**3, 1),
+            "used_vram_gb": round((total_bytes - free_bytes) / 1024**3, 1),
         }
 
     active_model = None
