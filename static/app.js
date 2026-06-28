@@ -229,6 +229,7 @@
     if (!model) return;
 
     state.loading = true;
+    stopProgressPolling();
     setModelListLoading(key);
     setUIEnabled(false);
 
@@ -407,12 +408,11 @@
       try {
         const p = await api('/api/progress');
         if (p.active && p.total > 0) {
-          const pct = Math.round((p.step / p.total) * 100);
-          el.progressFill.style.width = pct + '%';
+          el.progressFill.style.width = Math.round((p.step / p.total) * 100) + '%';
           el.progressText.textContent = `Step ${p.step} / ${p.total}`;
         }
       } catch (_) {}
-    }, 150);
+    }, 1500);
   }
 
   function stopProgressPolling() {

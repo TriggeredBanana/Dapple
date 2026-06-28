@@ -240,10 +240,17 @@ def load_model(model_key: str) -> dict:
     else:
         raise ValueError(f"Unknown pipeline: {cfg['pipeline_module']}")
 
-    offload_mode = (user_cfg.get("use_cpu_offload") or cfg["needs_cpu_offload"]).strip().lower()
-    if offload_mode in ("always", "on", "true", "yes"):
+    cfg_offload = (user_cfg.get("use_cpu_offload") or "").strip().lower()
+    if cfg_offload in ("always", "on", "true", "yes"):
+        offload_mode = "always"
+    elif cfg_offload in ("never", "off", "false", "no"):
+        offload_mode = "never"
+    else:
+        offload_mode = cfg["needs_cpu_offload"]
+
+    if offload_mode == "always":
         pipe.enable_model_cpu_offload()
-    elif offload_mode in ("never", "off", "false", "no"):
+    elif offload_mode == "never":
         pipe = pipe.to("cuda")
     else:
         try:
@@ -269,6 +276,8 @@ def _unload_pipeline():
     global _pipeline, _active_model_key
     if _pipeline is not None:
         del _pipeline
+        import gc
+        gc.collect()
         import torch
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -500,6 +509,7 @@ async def api_set_config(req: ConfigUpdate):
     cfg[req.key] = parsed
     _save_config(cfg)
     return {"status": "ok", "key": req.key, "value": parsed}
+
 
 
 @app.get("/api/progress")

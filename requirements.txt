@@ -24,6 +24,7 @@ regex
 
 # Tokenizer support for FLUX text encoders
 sentencepiece>=0.2.0
+protobuf>=3.20.0
 
 # Environment variable loading (for HF_TOKEN in .env file)
 python-dotenv>=1.0.0
